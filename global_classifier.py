@@ -95,8 +95,6 @@ if __name__ == "__main__":
             supervised_sampler = SupervisedSampler(data=train_data[mask_train_labeled],
                                                    target=train_targets[mask_train_labeled])
 
-            feat_impt, feat_impt_range = compute_feature_mutual_influences(train_data)
-
             # prepare models
             models, contrastive_loss_histories, supervised_loss_histories, supervised_accuracy_histories, supervised_all_metrics_histories, supervised_all_epoch_histories = {}, {}, {}, {}, {}, {}
 

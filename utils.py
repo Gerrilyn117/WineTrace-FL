@@ -68,9 +68,8 @@ def load_openml_list(DIDS):
         entry = datasets_list.loc[ds]
 
         print('Loading', entry['name'], entry.did, '..')
-
         if entry['NumberOfClasses'] == 0.0:
-            raise Exception("Regression not supported for now")
+            raise Exception("Regression tasks are not supported yet")
             exit(1)
         else:
             dataset = openml.datasets.get_dataset(int(entry.did))
@@ -127,12 +126,12 @@ def preprocess_datasets(train_data, test_data, normalize_numerical_features):
         scaler = StandardScaler()
         non_categorical_cols = train_data.select_dtypes(exclude='category').columns
         if len(non_categorical_cols) == 0:
-            print("No numerical features presen! Skip numerical z-score normalization.")
+            print("No numerical features! Skipping z-score normalization for numerical features.")
         else:
             train_data[non_categorical_cols] = scaler.fit_transform(train_data[non_categorical_cols])
             test_data[non_categorical_cols] = scaler.transform(test_data[non_categorical_cols])
     print(
-        f"Data preprocess finished! Dropped {len(features_dropped)} features: {features_dropped}. {'Normalized numerical features.' if normalize_numerical_features else ''}")
+        f"Data preprocessing complete! {len(features_dropped)} features dropped: {features_dropped}. {'Numerical features normalized.' if normalize_numerical_features else ''}")
     # retain the pandas dataframe format for later one-hot encoder
     return train_data, test_data
 
@@ -142,41 +141,6 @@ def fit_one_hot_encoder(one_hot_encoder_raw, train_data):
                                               remainder='passthrough')
     one_hot_encoder.fit(train_data)
     return one_hot_encoder
-
-def get_bootstrapped_targets(data, targets, classifier_model, mask_labeled, one_hot_encoder):
-    # use the classifier to predict for all data first
-    classifier_model.module.eval()
-    with torch.no_grad():
-        pred_logits = classifier_model.module.get_classification_prediction_logits(
-            torch.tensor(one_hot_encoder.transform(data).astype(float), dtype=torch.float32).to(DEVICE)).cpu().numpy()
-    preds = np.argmax(pred_logits, axis=1)
-    return np.where(mask_labeled, targets, preds)
-
-
-# expect a pandas dataframe
-# fit xgboost models on pandas dataframe and series
-def compute_feature_mutual_influences(data):
-    assert isinstance(data, pd.DataFrame)
-    label_encoder_tmp = LabelEncoder()
-    feat_impt = []
-    start_time = time.time()
-    feat_impt_range_avg = 0
-    for i, col in enumerate(data.columns):
-        if data[col].dtype == "category":
-            xgb_model = xgb.XGBClassifier(**XGB_FEATURECORR_CONFIG)
-            target = label_encoder_tmp.fit_transform(data[col])
-        else:
-            xgb_model = xgb.XGBRegressor(**XGB_FEATURECORR_CONFIG)
-            target = data[col]
-        xgb_model.fit(data.drop(col, axis=1), target)
-        # the xgb_obj.feature_importances_ is the normalized score for gain
-        feat_impt_range_avg += np.ptp(xgb_model.feature_importances_)
-        feat_impt.append(np.insert(xgb_model.feature_importances_, obj=i, values=0))
-    feat_impt = np.array(feat_impt)
-    feat_impt_range_avg = feat_impt_range_avg / len(data.columns)
-    print(
-        f"Feature importances computated for {len(data)} samples each with {np.shape(data)[1]} features! Took {time.time() - start_time:.2f} seconds. The average range is {feat_impt_range_avg}")
-    return feat_impt, feat_impt_range_avg
 
 
 def initialize_adam_optimizer(model):
@@ -209,7 +173,7 @@ def evaluate_and_save_results(model,
 
         print(f"\nAccuracy: {acc:.4f}")
         print(f"MCC: {mcc:.4f}")
-        print("\nClassification Report:")
+        print("\nClassification report:")
         print(classification_report(y_true, y_pred, digits=4))
 
         summary_df = pd.DataFrame([{
@@ -221,7 +185,7 @@ def evaluate_and_save_results(model,
         }])
         summary_path = fr"D:\gjy\pyproject\tabsyn-main4FL\FL\BPresult3\classification_summary_{save_name}.csv"
         summary_df.to_csv(summary_path, index=False)
-        print(f"\n指标已保存到: {summary_path}")
+        print(f"\nMetrics saved to: {summary_path}")
 
         cm = confusion_matrix(y_true, y_pred)
         plt.figure(figsize=(8, 6))
@@ -237,7 +201,7 @@ def evaluate_and_save_results(model,
         fig_path = fr"D:\gjy\pyproject\tabsyn-main4FL\FL\BPresult3\confusion_matrix_{save_name}.png"
         plt.savefig(fig_path)
         plt.close()
-        print(f"混淆矩阵图已保存到: {fig_path}")
+        print(f"Confusion matrix image saved to: {fig_path}")
 
         return summary_df
 
@@ -264,14 +228,14 @@ def save_train_metrics_separately(dataset_name, loss_histories, acc_histories):
 def save_fold_histories(fold_idx, dataset, contrastive_loss_histories, supervised_loss_histories,
                         supervised_accuracy_histories=None, save_root=None):
     """
-    保存某一折的训练loss/accuracy记录
+    Save training loss/accuracy records for a fold.
 
-    参数：
-    - fold_idx: 当前折数（从0开始）
-    - contrastive_loss_histories: dict, 每个方法的contrastive loss记录
-    - supervised_loss_histories: dict, 每个方法的supervised loss记录
-    - supervised_accuracy_histories: dict, 每个方法的supervised accuracy记录，可选
-    - save_root: str, 保存根目录，默认为当前工作目录的"loss_logs"
+    Args:
+    - fold_idx: current fold index (starting from 0)
+    - contrastive_loss_histories: dict, contrastive loss records for each method
+    - supervised_loss_histories: dict, supervised loss records for each method
+    - supervised_accuracy_histories: dict, supervised accuracy records for each method, optional
+    - save_root: str, root directory to save, default is "loss_logs" in current working directory
     """
     save_dataset = dataset
     if save_root is None:
@@ -297,7 +261,7 @@ def save_fold_histories(fold_idx, dataset, contrastive_loss_histories, supervise
             df = pd.DataFrame({'epoch': list(range(1, len(accs) + 1)), 'accuracy': accs})
             df.to_csv(save_path, index=False)
 
-    print(f"Fold {fold_idx + 1} histories saved to {fold_dir}")
+    print(f"Fold {fold_idx + 1} training records saved to {fold_dir}")
 
 def save_fold_results(train_metrics_df, test_metrics_df, fold_idx, methods, dataset):
 
@@ -393,5 +357,5 @@ def save_train_test_metrics(dataset_did, method, train_results, test_results):
     save_path = os.path.join(save_dir, f"{method}_5fold.csv")
 
     final_df.to_csv(save_path, encoding="utf-8-sig")
-    print(f"✅ 已保存至: {save_path}")
+    print(f"✅ Saved to: {save_path}")
     return train_acc_total, test_acc_total
