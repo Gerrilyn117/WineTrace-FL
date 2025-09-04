@@ -183,7 +183,7 @@ def evaluate_and_save_results(model,
             "macro_recall": macro_recall,
             "macro_f1-score": macro_f1
         }])
-        summary_path = fr"D:\gjy\pyproject\tabsyn-main4FL\FL\BPresult3\classification_summary_{save_name}.csv"
+        summary_path = fr"liquor/result/classification_summary_{save_name}.csv"
         summary_df.to_csv(summary_path, index=False)
         print(f"\nMetrics saved to: {summary_path}")
 
@@ -198,7 +198,7 @@ def evaluate_and_save_results(model,
         plt.tight_layout()
 
         # 保存图像
-        fig_path = fr"D:\gjy\pyproject\tabsyn-main4FL\FL\BPresult3\confusion_matrix_{save_name}.png"
+        fig_path = fr"liquor/result/confusion_matrix_{save_name}.png"
         plt.savefig(fig_path)
         plt.close()
         print(f"Confusion matrix image saved to: {fig_path}")
@@ -206,7 +206,7 @@ def evaluate_and_save_results(model,
         return summary_df
 
 def save_train_metrics_separately(dataset_name, loss_histories, acc_histories):
-    output_dir = rf"D:\gjy\pyproject\Tabular-Class-Conditioned-SSL-main\liquor\result\{dataset_name}\train_loss&acc"
+    output_dir = rf"liquor/result/{dataset_name}/train_loss&acc"
     os.makedirs(output_dir, exist_ok=True)
 
     for method in loss_histories:
