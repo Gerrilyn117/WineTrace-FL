@@ -59,22 +59,6 @@ def train_contrastive_loss(model,
     optimizer = initialize_adam_optimizer(model)
     
     for i in tqdm(range(1, CONTRASTIVE_LEARNING_MAX_EPOCHS+1)):
-        if i%CLS_CORR_REFRESH_SAMPLER_PERIOD == 0 and 'cls_corr' in method_key:#if i % CLS_CORR_REFRESH_SAMPLER_PERIOD == 0 and 'cls_corr' in method_key:
-            model.module.freeze_encoder()#暂时冻结编码器；
-            # train the current model on down-stream supervised task在当前的有标签样本上做一次监督训练，只优化分类头；用于提升伪标签的准确性。
-            _ = train_classification(model, supervised_sampler, one_hot_encoder)
-            # use the current model to do pseudo labeling用当前模型对训练集中的无标签样本生成“伪标签”；提高对比学习中的类别感知能力。
-            bootstrapped_train_targets = get_bootstrapped_targets( 
-                                            pd.DataFrame(data=contrastive_sampler.data, columns=contrastive_sampler.columns), 
-                                            contrastive_sampler.target, 
-                                            model, 
-                                            mask_train_labeled, 
-                                            one_hot_encoder)
-            # get the class based sampler based on more reliable model predictions构建一个新的对比采样器，它根据伪标签对数据构造更“聪明”的正负样本对。
-            contrastive_sampler = ClassCorruptSampler(pd.DataFrame(data=contrastive_sampler.data, columns=contrastive_sampler.columns), 
-                                                      bootstrapped_train_targets) 
-            model.module.unfreeze_encoder()#让后续训练继续优化 encoder 的参数。
-        #每一轮进行一次对比学习训练：
         epoch_loss = _train_contrastive_loss_oneEpoch(model, 
                                                       contrastive_sampler, 
                                                       mask_generator, 
@@ -91,39 +75,35 @@ def train_classification(model, supervised_sampler, one_hot_encoder):
     model.module.initialize_classification_head()
 
     for _ in range(SUPERVISED_LEARNING_MAX_EPOCHS):
-        model.module.train()#model：待训练的神经网络模型（已封装在 DataParallel 中）；
+        model.module.train()
         epoch_loss = 0.0
         all_preds = []
         all_targets = []
-        for _ in range(supervised_sampler.n_batches):#supervised_sampler：用于采样带标签数据的采样器；
+        for _ in range(supervised_sampler.n_batches):
             inputs, targets = supervised_sampler.sample_batch()
-            #对输入数据进行 one-hot 编码；
             inputs = one_hot_encoder.transform(pd.DataFrame(data=inputs, columns=supervised_sampler.columns))
-            inputs = torch.tensor(inputs.astype(float), dtype=torch.float32).to(DEVICE)#转换为 float32 的 tensor 并送到设备（GPU/CPU）；
+            inputs = torch.tensor(inputs.astype(float), dtype=torch.float32).to(DEVICE)
             # seemingly int64 is often used as the type for indices
-            targets = torch.tensor(targets.astype(int), dtype=torch.int64).to(DEVICE)#将标签转换成 int64 tensor，用于 cross_entropy 等分类损失。
+            targets = torch.tensor(targets.astype(int), dtype=torch.int64).to(DEVICE)
 
             # reset gradients
             optimizer.zero_grad()
 
-            # get classification predictions用模型计算预测结果 pred_logits；
+            # get classification predictions
             pred_logits = model.module.get_classification_prediction_logits(inputs)
 
-            # compute loss计算当前 batch 的损失 loss；
+            # compute loss
             loss = model.module.classification_loss(pred_logits, targets)
-            loss.backward()#反向传播计算梯度；
+            loss.backward()
 
-            # update model weights更新模型参数。
             optimizer.step()
 
-            # log progress累加当前 batch 的损失
             epoch_loss += loss.item()
 
             preds = torch.argmax(pred_logits, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(targets.cpu().numpy())
 
-        #每一轮结束后，将平均损失加入 train_losses 中
         train_losses.append(epoch_loss / supervised_sampler.n_batches)
         acc = accuracy_score(all_targets, all_preds)
         train_accuracies.append(acc)
@@ -132,46 +112,44 @@ def train_classification(model, supervised_sampler, one_hot_encoder):
 def train_classification_all_metrics(model, supervised_sampler, one_hot_encoder):
     train_losses = []
     train_accuracies = []
-    all_metrics = []  # 用来存储每个 epoch 的详细指标
-    all_epoch_results = []  # 每个 epoch 保存 preds/logits/targets
+    all_metrics = []
+    all_epoch_results = []
     optimizer = initialize_adam_optimizer(model)
     model.module.initialize_classification_head()
 
     for _ in range(SUPERVISED_LEARNING_MAX_EPOCHS):
-        model.module.train()#model：待训练的神经网络模型（已封装在 DataParallel 中）；
+        model.module.train()
         epoch_loss = 0.0
         all_preds = []
         all_targets = []
         all_logits = []
-        for _ in range(supervised_sampler.n_batches):#supervised_sampler：用于采样带标签数据的采样器；
+        for _ in range(supervised_sampler.n_batches):
             inputs, targets = supervised_sampler.sample_batch()
-            #对输入数据进行 one-hot 编码；
+
             inputs = one_hot_encoder.transform(pd.DataFrame(data=inputs, columns=supervised_sampler.columns))
-            inputs = torch.tensor(inputs.astype(float), dtype=torch.float32).to(DEVICE)#转换为 float32 的 tensor 并送到设备（GPU/CPU）；
+            inputs = torch.tensor(inputs.astype(float), dtype=torch.float32).to(DEVICE)
             # seemingly int64 is often used as the type for indices
-            targets = torch.tensor(targets.astype(int), dtype=torch.int64).to(DEVICE)#将标签转换成 int64 tensor，用于 cross_entropy 等分类损失。
+            targets = torch.tensor(targets.astype(int), dtype=torch.int64).to(DEVICE)
 
             # reset gradients
             optimizer.zero_grad()
 
-            # get classification predictions用模型计算预测结果 pred_logits；
+            # get classification predictions
             pred_logits = model.module.get_classification_prediction_logits(inputs)
 
-            # compute loss计算当前 batch 的损失 loss；
+            # compute loss
             loss = model.module.classification_loss(pred_logits, targets)
-            loss.backward()#反向传播计算梯度；
+            loss.backward()
 
-            # update model weights更新模型参数。
+            # update model weights
             optimizer.step()
 
-            # === 记录 batch 结果 ===
             epoch_loss += loss.item()
             preds = torch.argmax(pred_logits, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(targets.cpu().numpy())
             all_logits.extend(pred_logits.detach().cpu().numpy())
 
-            # === 每个 epoch 结束，计算指标 ===
         train_losses.append(epoch_loss / supervised_sampler.n_batches)
 
         all_preds = np.array(all_preds)
@@ -181,7 +159,6 @@ def train_classification_all_metrics(model, supervised_sampler, one_hot_encoder)
 
         n_classes = len(np.unique(all_targets))
 
-        # --- 总体指标 ---
         acc_total = accuracy_score(all_targets, all_preds)
         precision_total = precision_score(all_targets, all_preds, average="macro", zero_division=0)
         recall_total = recall_score(all_targets, all_preds, average="macro", zero_division=0)
@@ -191,7 +168,6 @@ def train_classification_all_metrics(model, supervised_sampler, one_hot_encoder)
         except ValueError:
             auc_total = np.nan
 
-        # --- 每类指标 ---
         acc_per_class = []
         auc_per_class = []
         mcc_per_class = []
@@ -216,7 +192,6 @@ def train_classification_all_metrics(model, supervised_sampler, one_hot_encoder)
                                       (all_preds == c).astype(int))
             mcc_per_class.append(mcc_c)
 
-        # --- 保存指标 ---
         metrics_df = pd.DataFrame({
             "ACC": acc_per_class + [acc_total],
             "AUC": auc_per_class + [auc_total],
@@ -226,15 +201,13 @@ def train_classification_all_metrics(model, supervised_sampler, one_hot_encoder)
         }, index=[f"class_{i}" for i in range(n_classes)] + ["total"])
 
         all_metrics.append(metrics_df)
-        # 保留总体 ACC 作为原来函数的输出之一
+
         train_accuracies.append(acc_total)
 
-        # === 新增：保存当前 epoch 的结果 ===
         all_epoch_results.append({
             "pred_logits": all_probs,   # numpy array, shape=(N, n_classes)
             "preds": all_preds,          # numpy array, shape=(N,)
             "targets": all_targets       # numpy array, shape=(N,)
         })
 
-    # === 最终输出 ===
     return train_losses, train_accuracies, all_metrics, all_epoch_results

@@ -35,7 +35,7 @@ print(f"Using DEVICE: {DEVICE}")
 
 if __name__ == "__main__":
     k = 5
-    dataset_dids = ["R=6D"]
+    dataset_dids = ["R=D"]
     for dataset_did in dataset_dids:
         test_results_all_folds = defaultdict(lambda: {"y_true": [], "y_pred": [], "y_prob": []})
         train_results_all_folds = defaultdict(lambda: {"y_true": [], "y_pred": [], "y_prob": []})
@@ -46,10 +46,10 @@ if __name__ == "__main__":
             n_cat_feats_before_processing = 3
 
             if dataset_did == 'real':
-                train_data = f"./liquor/data/5fold/{dataset_name}/{dataset_name}_train.csv"
+                train_data = f"./liquor/data/{dataset_name}/{dataset_name}_train.csv"
             else:
-                train_data = f"./liquor/data/5fold0823/{dataset_name}/{dataset_did}/{dataset_name}_combined_syn_data.csv"
-            test_data = f"./liquor/data/5fold/{dataset_name}/{dataset_name}_test.csv"
+                train_data = f"./liquor/data/{dataset_name}/{dataset_did}/{dataset_name}_combined_syn_data.csv"
+            test_data = f"./liquor/data/{dataset_name}/{dataset_name}_test.csv"
             train_df = pd.read_csv(train_data)
             test_df = pd.read_csv(test_data)
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
             accuracies, aurocs = {}, {}
             for key in ALL_METHODS:
                 accuracies[key], aurocs[key] = [], []
-            seed = 1234
+            seed = 1111
             fix_seed(seed)
 
             train_data = train_df.drop(columns=["y"]).values
@@ -119,23 +119,13 @@ if __name__ == "__main__":
 
             ############# Prepare data samplers for corruption############
             contrastive_samplers = {}
-            # Random Sampling: Ignore class information in original corruption
-            contrastive_samplers['rand_corr'] = RandomCorruptSampler(train_data)
             # Oracle Class Sampling: Use oracle info on training labels
             contrastive_samplers['orc_corr'] = ClassCorruptSampler(train_data, train_targets)
-            # Predicted Class Sampling: Use supervised model to obtain pseudo labels at the beginning
-            bootstrapped_train_targets = get_bootstrapped_targets( \
-                train_data, train_targets, models['no_pretrain'], mask_train_labeled, one_hot_encoder)
-            contrastive_samplers['cls_corr'] = ClassCorruptSampler(train_data, bootstrapped_train_targets)
 
             ################ Prepare feature selections for masking #############
             # prepare mask generator
             mask_generators = {}
             mask_generators['rand_feats'] = RandomMaskGenerator(train_data.shape[1])
-            mask_generators['leastRela_feats'] = CorrelationMaskGenerator(train_data.shape[1], high_correlation=False)
-            mask_generators['mostRela_feats'] = CorrelationMaskGenerator(train_data.shape[1], high_correlation=True)
-            mask_generators['leastRela_feats'].initialize_feature_importances(feat_impt)
-            mask_generators['mostRela_feats'].initialize_feature_importances(feat_impt)
 
             for method in ALL_METHODS:
                 if method == "no_pretrain":
