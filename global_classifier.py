@@ -46,10 +46,10 @@ if __name__ == "__main__":
             n_cat_feats_before_processing = 3
 
             if dataset_did == 'real':
-                train_data = rf"/root/autodl-tmp/Tabular-Class-Conditioned-SSL-main/liquor/data/5fold/{dataset_name}/{dataset_name}_train.csv"
+                train_data = f"./liquor/data/5fold/{dataset_name}/{dataset_name}_train.csv"
             else:
-                train_data = rf"/root/autodl-tmp/Tabular-Class-Conditioned-SSL-main/liquor/data/5fold0823/{dataset_name}/{dataset_did}/{dataset_name}_combined_syn_data.csv"
-            test_data = rf"/root/autodl-tmp/Tabular-Class-Conditioned-SSL-main/liquor/data/5fold/{dataset_name}/{dataset_name}_test.csv"
+                train_data = f"./liquor/data/5fold0823/{dataset_name}/{dataset_did}/{dataset_name}_combined_syn_data.csv"
+            test_data = f"./liquor/data/5fold/{dataset_name}/{dataset_name}_test.csv"
             train_df = pd.read_csv(train_data)
             test_df = pd.read_csv(test_data)
 
@@ -248,7 +248,7 @@ if __name__ == "__main__":
             train_y_pred = np.array(train_results_all_folds[method]["y_pred"])
             train_y_prob = np.array(train_results_all_folds[method]["y_prob"])
 
-            pic_dir = fr"/root/autodl-tmp/Tabular-Class-Conditioned-SSL-main/liquor/result/{dataset_did}/pic"
+            pic_dir = f"./liquor/result/{dataset_did}/pic"
             os.makedirs(pic_dir, exist_ok=True)
             classes = ["HL", "CJ", "JD"]
             cm_test = confusion_matrix(test_y_true, test_y_pred)
